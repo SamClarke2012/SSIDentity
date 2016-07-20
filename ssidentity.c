@@ -123,7 +123,7 @@ Request parseRaw( uint8_t *buff, uint16_t buffSize ) {
                 // Otherwise it's something interesting...log it.
                 } else {
                     char hexByte[5];
-                    snprintf(&hexByte[0], 2, 
+                    snprintf(&hexByte[0], 5, 
                             "\\x%02X",
                             (unsigned char)buff[SSID_CHR_OFFSET + i]);
                     // Some STA buses are an example...
@@ -133,7 +133,7 @@ Request parseRaw( uint8_t *buff, uint16_t buffSize ) {
                     request->SSID[i+2] = hexByte[2];
                     request->SSID[i+3] = hexByte[3];
                     // Kick i fwd a few spots
-                    i+=3;
+                    i+=4;
                     validSSID = FALSE;
                 }
             }
