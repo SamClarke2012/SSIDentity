@@ -43,11 +43,17 @@ https://www.sqlite.org/c3ref/intro.html
 #include "cAssert.h"
 
 
+static int sqlCallback(void *NotUsed, int argc, char **argv, char **azColName){
+   return 0;
+}
+
 int main( int argc, char **argv ) {
     //SQL vars
     char *sqlCmd;
     char *sqlErr;
     sqlite3 *requestDB;
+    int rc = sqlite3_open("observations.db", &requestDB);
+    cAssertMsg((rc <= 0), "Failed to open observations.db\n");
     // Buffer for received 80211 frames
     uint8_t pktBuff[PKT_BUFF_SZ];
     // Setup a scoket for *any* protocol
@@ -64,13 +70,29 @@ int main( int argc, char **argv ) {
         Request request = parseRaw(pktBuff, recvDataSize);
         // Print it if it's not null
         if( request != NULL ){ 
-            printf("%s  \"%s\"  %s\t\t%ddBm %umHz  Dist: %.02fm\n", 
+            printf("%s  %s  \"%s\"\t%ddBm %umHz  Dist: %.02fm\n", 
                 request->timeStamp,
                 request->clientMAC, 
                 request->SSID,
                 request->RSSI,
                 request->frequency,
                 request->distance);
+            // Add a new entry to the db
+            sqlCmd = sqlite3_mprintf("INSERT INTO obs "
+                    "(TIMESTAMP, MAC, SSID, RSSI, FREQ, DIST)"
+                    " VALUES ('%q', '%q', '%q', %d, %u, %.02f);", 
+                    request->timeStamp,
+                    request->clientMAC, 
+                    request->SSID,
+                    request->RSSI,
+                    request->frequency,
+                    request->distance);
+            /* Execute SQL statement */
+            rc = sqlite3_exec(requestDB, sqlCmd, sqlCallback, 0, &sqlErr);
+            if( rc != SQLITE_OK ){
+                // printf(stderr, "SQL error: %s\n", sqlErr);
+                sqlite3_free(sqlErr);
+            }
         }
         free(request);  
     }
@@ -133,7 +155,7 @@ Request parseRaw( uint8_t *buff, uint16_t buffSize ) {
                     request->SSID[i+2] = hexByte[2];
                     request->SSID[i+3] = hexByte[3];
                     // Kick i fwd a few spots
-                    i+=4;
+                    i+=3;
                     validSSID = FALSE;
                 }
             }
@@ -240,10 +262,9 @@ uint64_t macU8ToU64( uint8_t *mac ) {
     https://en.wikipedia.org/wiki/Free-space_path_loss
     for MHz / meters,
 
-    FSPL(dB) = 20*log10( dist ) + 20*log10( freq ) - 27.55
-
+    RSSI = FSPL(dB) = 20*log10( dist ) + 20*log10( freq ) - 27.55
 */
 float signalToDistance( int8_t RSSI, uint16_t frequency ) {
-    float distance = (27.55-(20*log10(frequency))+abs(RSSI))/20;
+    float distance = (27.55-RSSI-(20*log10(frequency)))/20.00;
     return (float)pow(10, distance); 
 }
