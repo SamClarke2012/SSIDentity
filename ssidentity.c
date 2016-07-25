@@ -20,6 +20,21 @@ https://www.sqlite.org/c3ref/intro.html
 ** Use airmon-ng to enable promiscuous mode ** 
 ** For the moment, it's easier to debug.    **
 
+CLIENT (This) TODOs
+
+    # Move timestamp to epoch
+    # Use MAC as primary Key and keep timestamps as CSV text field
+    # Handle UTF-8 and other crap leaking through isprint()
+
+    # Add remote admin capability (edit settings / modes)
+    # Add DB upload to server based on settings
+    # Add distance filtering based on settings
+
+SERVER (Coming) TODOs
+
+    # Add Triangulation (Trilateration Estimation) 
+    # Add 
+
 */
 
 #include <time.h>
@@ -59,6 +74,7 @@ int main( int argc, char **argv ) {
     // Setup a scoket for *any* protocol
     struct sockaddr socketAddr;
     socklen_t addrLen = sizeof(socketAddr);
+    // Family, type, protocol
     int sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
     cAssertMsg( (sock >= 0), "Are you running as root?\n");
 
@@ -102,6 +118,7 @@ int main( int argc, char **argv ) {
 
 
 /*
+\x08\x01\x18\x10\x07\x08\x0A\x0C�   �
     Parse 802.11 probe requests from raw socket data.
     Since this is an open, promiscuous socket..The data
     could really be anything.
@@ -123,14 +140,15 @@ Request parseRaw( uint8_t *buff, uint16_t buffSize ) {
     // Get frame protocol
     int protocol = ip_header->protocol;
     // Skip known ethernet protocols and non broadcast frames
+    // If statements are eval'd in order, ordered for fast rejection.
     if( frameProtocol == IEEE80211_STYPE_PROBE_REQ &&
         isBroascast( &buff[DEST_ADDR_OFFSET])      &&
         !isKnownProtocol( protocol )               ){
-
-        int i;
-        int validSSID = FALSE;
+        // Begin decoding the frame
+        int i, validSSID;
+        validSSID = TRUE;
         // Throw a new request onto the heap
-        Request request = malloc( sizeof(req) );
+        Request request = malloc( sizeof( RequestStruct ) );
         // Preformat the SSID with NULL chars
         memset(request->SSID, '\0', SSID_BUFF_SZ);
         // Check the SSID isn't blank or ovrflw
@@ -139,16 +157,14 @@ Request parseRaw( uint8_t *buff, uint16_t buffSize ) {
             // Copy SSID into request
             for(i = 0; i < SSIDlen; i++){
                 // If it's a printable char
-                if( isprint(buff[SSID_CHR_OFFSET + i]) ) {
+                if( isprint(buff[SSID_CHR_OFFSET + i]) && validSSID ) {
                     request->SSID[i] = buff[SSID_CHR_OFFSET + i];
-                    validSSID = TRUE;
                 // Otherwise it's something interesting...log it.
                 } else {
+                    // Convert it to a '\xNN' string rep
                     char hexByte[5];
-                    snprintf(&hexByte[0], 5, 
-                            "\\x%02X",
+                    snprintf(&hexByte[0], 5, "\\x%02X",
                             (unsigned char)buff[SSID_CHR_OFFSET + i]);
-                    // Some STA buses are an example...
                     // Set the SSID to printable HEX
                     request->SSID[i] = hexByte[0];
                     request->SSID[i+1] = hexByte[1];
